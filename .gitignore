@@ -1,0 +1,4 @@
+spec/*.aux
+spec/*.log
+spec/*.out
+spec/*.synctex.gz

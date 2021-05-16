@@ -1,0 +1,1096 @@
+\documentclass[12pt]{article}
+
+\usepackage{graphicx}
+\graphicspath{ {./images/} }
+\usepackage{paralist}
+\usepackage{amsfonts}
+\usepackage{amsmath}
+\usepackage{hhline}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{multicol}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage{listings}
+
+\usepackage{geometry}
+ \geometry{
+ a4paper,
+ total={170mm,257mm},
+ left=12mm,
+ top=12mm,
+ }
+
+\pagestyle {plain}
+\pagenumbering{arabic}
+
+\newcounter{stepnum}
+\setlength{\parindent}{0em}
+
+%% Comments
+
+\usepackage{color}
+
+\newif\ifcomments\commentstrue
+
+\newcommand{\code}[1]{\texttt{#1}}
+
+\ifcomments
+\newcommand{\authornote}[3]{\textcolor{#1}{[#3 ---#2]}}
+\newcommand{\todo}[1]{\textcolor{red}{[TODO: #1]}}
+\else
+\newcommand{\authornote}[3]{}
+\newcommand{\todo}[1]{}
+\fi
+
+\newcommand{\wss}[1]{\authornote{blue}{SS}{#1}}
+
+\title{SFWRENG 2AA4 Assignment 4, MIS}
+\author{Saruggan Thiruchelvan (thirus6)}
+
+\begin {document}
+
+\maketitle
+
+This document is the Module Interface Specification (MIS) for implementing the classic game, \emph{2048}. The game is started with an empty $4 \times 4$ board and two tiles with the value of 2 (or possibly 4) are added to random positions on the board. The player can move LEFT, RIGHT, UP, or DOWN causing the tiles to shift in the given direction. If two tiles with the same value are beside each other in the direction of a move, then those tiles merge resulting in a tile with the double their value. With each move, a random tile is added to the board and the score is accumulated with the value of all merged tiles during the move. The goal is to get the 2048 tile (or possibly beyond), but if the player cannot make a move in any direction, the game is over. A demo of the implementation can be launched using the command \code{make demo}. In the Demo.java file, the marking TA can comment/uncomment to select between starting a new game (default) or resuming/restoring a previous game.\\
+
+\textbf{Design Overview} \\
+
+The software architecture follows the Model View Controller (MVC) design pattern. The model modules represent the data structures and accessors/mutators of the data which includes \textit{BoardT}, \textit{ScoreT}, and \textit{DirectionT}. The controller modules maintain and control the state of the game and the game logic which includes \textit{Controller}, and \textit{BoardManager}. The view modules work to display the state of the game using a graphical user interface (GUI) and translate player interactions which includes \textit{View}, \textit{ComponentUI}, \textit{ScoreUI}, \textit{TileUI}, \textit{BoardUI}, and \textit{MessageUI}. \\
+
+I designed these software modules to be intuitive to use and support likely changes. For example, variants of the game should be supported such as: tiles with different values (non 2-multiples or even negative values), different board sizes, or timed gameplay to name a few. Additionally, a likely feature would be the ability to resume or restore the state of a previous game and continue with one's current score/ high score. With respect to the view modules, some likely additions include introduction of  animations and window resizeability. \\
+
+\textbf{Design Critique} \\
+
+I tried to follow the MVC design pattern when designing my program to improve maintainability and design for change. The model modules (\textit{BoardT, ScoreT, DirectionT}) are simply data structures that have services to access/mutate the state of the game. They purposely do not contain any game logic which is instead handled by the controller modules (\textit{Controller, BoardManager}). The controller modules have services that manipulate the model modules to represent the current state of the game following a succession of actions by the user. Lastly, the view modules (\textit{View}, \textit{ComponentUI}, \textit{ScoreUI}, \textit{TileUI}, \textit{BoardUI}, \textit{MessageUI}) display the state of the model modules using a GUI and translate the user's interactions into method invocations of the controller modules. Some aspects of the MVC pattern are broken for simplicity but for the most part, it allows the modules to be highly cohesive and have low coupling. \\
+
+The \textit{BoardT} module has a very consistent design as the method signatures (such as getTile(i, j), setTile(i, j, value), isTileEmpty(i, j)) follow the same ordering of parameters (i-index, then j-index, etc). Although the design is highly cohesive (state and routines are highly related to the board of the game), it is not very essential. I opted to make the design more general rather than essential to make the module more convenient to use both in the code and in the written specification; methods such as isTileEmpty(i, j) are not absolutely necessary when one can just check if getTile(i, j) = 0 but it makes understanding the code/specification more intuitive. Similar methods such as equals(other) and isFull() are useful for the user to perform checks, conduct tests and avoid exceptions. \\
+
+The \textit{ScoreT} module is designed to be highly opaque and provide the most essential routines for maintaining the score of the game. Instead of adding setScore and setHighScore methods, I added an updateScore(points) method which adds to the existing score and updates the high score if necessary as well. Similarly, a resetScore method is used to set the score back to zero but leave the high score untouched. This design greatly supports information hiding as it allows the user to just add points to the score without needed the value of the current score in addition to preventing the user from potentially corrupting the high score of the module with direct mutators. Similarly, the design is also essential as it includes accessors for the score and high score but omits (direct) mutators for the high score as that it unnecessary (and possibly dangerous) to change the high score in such a way. I reluctantly added an initializeScore(initialScore, initialHighScore) method to support restoring the state of a previous game but it is necessary to call it at the start of a new game as the score and high score state variable are already initialized to 0 by default. \\ 
+
+I separated the controller modules into two parts: the \textit{Controller} which has services for the user to make moves and check the state the state of the game and the \textit{BoardManager} library which the \textit{Controller} uses for complex multi-stage operations on \textit{BoardT} objects. The \textit{BoardManager} library contains useful methods such as merge(board, direction) and align(board, direction) which are partial operations of the larger move(direction) operation in the \textit{Controller} module. This design prevents the user from using the \textit{Controller} module to leave the game board in an invalid state (such as a merge without aligning) while allowing the complex services in \textit{BoardManager} to be developed separately and exported to potentially be used by other modules. This design is highly maintainable and supports design for change as the implementation details can be maintained (or possibly changed for variations of the game) without fear of potentially corrupting one another. Additionally, the \textit{Controller} is designed to highly usable as it includes methods such as isGameOver() and canMove(direction) to allow the user to again perform checks, conduct tests and avoid exceptions. It is designed to be highly flexible as a new game can be initialized by invoking newGame() or previous game can be restored by invoking resumeGame(board, intialScore, initalHighScore). Currently, there is no means of restoring the state of a game from a file or a database, but the resumeGame method allows one to start from an existing board configuration, so in the future, that feature can seamlessly be integrated. I chose to add the initialScore and initialHighScore to the method signature which implicitly initializes the ScoreT module so that fewer lines of code need to be written to resume a game. \\
+
+The \textit{View} module is absolutely not minimal. It contains just one single method display() which calls many services to initialize and format the GUI components and finally display the window. This was done intentionally as I wanted the module to be able to display the game in as few steps as possible so I wrapped all that functionality into a single method invocation. However, the GUI itself supports modularity as complex GUI components are wrapped in their own highly cohesive modules such as ScoreUI for displaying the score/high score and BoardUI for displaying the grid of TileUI components. This is achieved due in part to the ComponentUI interface which forces  ``UI components'' to implement its necessary methods. UI components are GUI components that need to be updated regularly to reflect the state of the game and are designated by the ``UI'' suffix in their names and implementing the ComponentUI interface. Currently, the interface has just one method signature update() which is called following each key press or mouse click but in the future if I want to introduce more complex additions to my GUI design (such as animations), the infrastructure exists to do so and as a result, supports design for change. 
+
+\newpage
+
+\section* {DirectionT Module (Enumerated Type)}
+
+\subsection*{Module}
+
+DirectionT
+
+\subsection* {Uses}
+
+None
+
+\subsection* {Syntax}
+
+\subsubsection* {Exported Constants}
+
+None
+
+\subsubsection* {Exported Types}
+
+DirectionT = \{\\
+    LEFT, \\
+    RIGHT, \\ 
+    UP, \\ 
+    DOWN, \\
+\}
+
+\subsubsection* {Exported Access Programs}
+
+None
+
+\subsection* {Semantics}
+
+\subsubsection* {State Variables}
+
+None
+
+\subsubsection* {State Invariant}
+
+None
+
+\subsubsection* {Assumptions}
+
+None
+
+\newpage
+
+\section* {BoardT Module (Abstract Data Type)}
+
+\subsection*{Template Module}
+
+BoardT
+
+\subsection* {Uses}
+
+DirectionT
+
+\subsection* {Syntax}
+
+\subsubsection* {Exported Constants}
+
+SIZE = 4
+
+\subsubsection* {Exported Types}
+
+BoardT = ?
+
+\subsubsection* {Exported Access Programs}
+
+\begin{tabular}{| l | l | l | p{6cm} |}
+\hline
+\textbf{Routine name} & \textbf{In} & \textbf{Out} & \textbf{Exceptions}\\
+\hline
+new BoardT &  & BoardT & \\
+\hline
+getTile & $\mathbb{Z}$, $\mathbb{Z}$ & $\mathbb{Z}$ & IndexOutOfBoundsException \\
+\hline
+setTile & $\mathbb{Z}$, $\mathbb{Z}$, $\mathbb{Z}$ &  & IndexOutOfBoundsException \\
+\hline
+isTileEmpty & $\mathbb{Z}$, $\mathbb{Z}$ & $\mathbb{B}$ & IndexOutOfBoundsException \\
+\hline
+isFull &  & $\mathbb{B}$ & \\
+\hline
+equals & BoardT & $\mathbb{B}$ & \\
+\hline
+copy &  & BoardT  & \\
+\hline
+\end{tabular}
+
+\subsection* {Semantics}
+
+\subsubsection* {State Variables}
+
+$tiles: \text{seq [SIZE] of seq [SIZE] of $\mathbb{Z}$}$
+
+\subsubsection* {State Invariant}
+
+None
+
+\subsubsection* {Assumptions}
+
+None
+
+\subsubsection* {Notes}
+
+The index $i$ specifies the horizontal position of the tile from left to right. The index $j$ specifies the vertical position of the tile from top to bottom. The top-left position of the board is (0, 0) while the bottom-right position of the board is (SIZE-1, SIZE-1).
+
+\newpage
+
+\subsubsection* {Access Routine Semantics}
+
+\noindent new BoardT():
+\begin{itemize}
+\item transition: 
+$ tiles :=
+< \begin{array}{lr}
+< \mbox{0}, \mbox{0}, \mbox{0}, \mbox{0} >,\\
+< \mbox{0}, \mbox{0}, \mbox{0}, \mbox{0} >, \\
+< \mbox{0}, \mbox{0}, \mbox{0}, \mbox{0} >, \\
+< \mbox{0}, \mbox{0}, \mbox{0}, \mbox{0} >\\
+\end{array} >
+$
+
+\item output: out := $\mbox{self}$
+\item exception: none
+\end{itemize}
+
+\noindent getTile($i$, $j$):
+\begin{itemize}
+\item output: out := $tiles[i][j]$
+\item exception: exc := $(\mathit{i} < 0) \vee (\mathit{i} \geq \text{SIZE}) \vee (\mathit{j} < 0) \vee (\mathit{j} \geq \text{SIZE})\Rightarrow \text{IndexOutOfBoundsException}$
+\end{itemize}
+
+\noindent setTile($i$, $j$, $value$):
+\begin{itemize}
+\item transition: $tiles[i][j] := value$
+\item exception: exc := $(\mathit{i} < 0) \vee (\mathit{i} \geq \text{SIZE}) \vee (\mathit{j} < 0) \vee (\mathit{j} \geq \text{SIZE})\Rightarrow \text{IndexOutOfBoundsException}$
+\end{itemize}
+
+\noindent isTileEmpty($i$, $j$):
+\begin{itemize}
+\item output: out := $tiles[i][j] = 0$
+\item exception: exc := $(\mathit{i} < 0) \vee (\mathit{i} \geq \text{SIZE}) \vee (\mathit{j} < 0) \vee (\mathit{j} \geq \text{SIZE})\Rightarrow \text{IndexOutOfBoundsException}$
+\end{itemize}
+
+\noindent isFull():
+\begin{itemize}
+\item output: out := $\neg \exists ( i, j : \mathbb{Z} | 0 \leq i < \mbox{SIZE} \wedge 0 \leq j < \mbox{SIZE}: \text{self.isTileEmpty}(i, j)) $
+\item exception: none
+\end{itemize}
+
+\noindent equals($other$):
+\begin{itemize}
+\item output: out := $(\forall i, j : \mathbb{Z} | i \in [0..board.\text{SIZE} -1] \wedge j \in [0..board.\text{SIZE} -1] : board.\text{getTile}(i,j) = other.\text{getTile}(i,j))$ 
+\item exception: none
+\end{itemize}
+
+\noindent copy():
+\begin{itemize}
+\item output: out := $newBoard : \text{BoardT} \text{ such that } \text{self.equals}(newBoard)$ 
+\item exception: none
+\end{itemize}
+
+\newpage
+
+\section* {ScoreT Module (Abstract Object)}
+
+\subsection*{Module}
+
+ScoreT
+
+\subsection* {Uses}
+
+None
+
+\subsection* {Syntax}
+
+\subsubsection* {Exported Constants}
+
+None
+
+\subsubsection* {Exported Types}
+
+None
+
+\subsubsection* {Exported Access Programs}
+
+\begin{tabular}{| l | l | l | p{6cm} |}
+\hline
+\textbf{Routine name} & \textbf{In} & \textbf{Out} & \textbf{Exceptions}\\
+\hline
+initialize & $\mathbb{Z}, \mathbb{Z}$ & & IllegalArgumentException \\
+\hline
+updateScore & $\mathbb{Z}$ & & IllegalArgumentException \\
+\hline
+getScore &  & $\mathbb{Z}$ &  \\
+\hline
+getHighScore &  & $\mathbb{Z}$ &  \\
+\hline
+resetScore &  &  &  \\
+\hline
+\end{tabular}
+
+\subsection* {Semantics}
+
+\subsubsection* {State Variables}
+
+$score: \mathbb{Z} \, | \, score = 0$ \\
+$highScore: \mathbb{Z} \, | \, highScore = 0$
+
+\subsubsection* {State Invariant}
+
+$score \geq 0 \wedge highScore \geq 0 \wedge highScore \geq score $
+
+\subsubsection* {Assumptions}
+
+None
+
+\newpage
+
+\subsubsection* {Access Routine Semantics}
+
+\noindent initialize($initialScore, initialHighScore$):
+\begin{itemize}
+\item transition: $score, highScore := initialScore, initialHighScore$
+\item exception: exc := $\mathit{initialScore} < 0 \, \vee \, \mathit{initialHighScore} < 0 \, \vee \, \mathit{initialHighScore} < \mathit{initialScore} \Rightarrow \text{IllegalArgumentException}$
+\end{itemize}
+
+\noindent updateScore($points$):
+\begin{itemize}
+\item transition: $score, highScore := score + points, (score + points > highScore \Rightarrow score + points) | (\text{True} \Rightarrow highScore)$
+\item exception: exc := $\mathit{points} < 0 \Rightarrow \text{IllegalArgumentException}$
+\end{itemize}
+
+\noindent getScore():
+\begin{itemize}
+\item output: out := $score$
+\item exception: none
+\end{itemize}
+
+\noindent getHighScore():
+\begin{itemize}
+\item output: out := $highScore$
+\item exception: none
+\end{itemize}
+
+\noindent resetScore():
+\begin{itemize}
+\item transition: $score := 0$
+\item exception: none
+\end{itemize}
+
+\newpage
+
+\section* {BoardManager Module (Library)}
+
+\subsection*{Module}
+
+BoardManager
+
+\subsection* {Uses}
+
+BoardT, DirectionT
+
+\subsection* {Syntax}
+
+\subsubsection* {Exported Constants}
+
+None
+
+\subsubsection* {Exported Types}
+
+None
+
+\subsubsection* {Exported Access Programs}
+
+\begin{tabular}{| l | l | l | p{5cm} |}
+\hline
+\textbf{Routine name} & \textbf{In} & \textbf{Out} & \textbf{Exceptions}\\
+\hline
+merge & BoardT, DirectionT & BoardT & \\
+\hline
+scoreFromMerge & BoardT, DirectionT & $\mathbb{Z}$ & \\
+\hline
+align & BoardT, DirectionT & BoardT & \\
+\hline
+addRandomTile & BoardT & BoardT & IllegalStateException \\
+\hline
+\end{tabular}
+
+\subsection* {Semantics}
+
+\subsubsection* {State Variables}
+
+None
+
+\subsubsection* {State Invariant}
+
+None
+
+\subsubsection* {Assumptions}
+
+None
+
+\newpage
+
+\subsubsection* {Access Routine Semantics}
+
+\noindent merge($board$, $direction$):
+\begin{itemize}
+\item output: out := $newBoard : \text{BoardT} \text{ such that } \forall i, j : \mathbb{Z} | i \in [0..board.\text{SIZE} -1] \wedge j \in [0..board.\text{SIZE} -1] : $ 
+\end{itemize}
+\begin{tabular}{ |p{2cm}|@{}|p{16.2cm}|}
+& 
+	\begin{tabular}{p{7.5cm}|p{8cm}}
+		 & \textbf{Out} \\ 
+
+	\end{tabular} \\ \hline
+direction = \text{LEFT} & 
+	\begin{tabular}{p{7.5cm}|p{8cm}}
+		$\text{SMH}(board, [0..board.\text{SIZE}-1], i, j)$ & $newBoard.\text{getTile}(i, j) = board.\text{getTile}(i, j) + board.\text{getTile}(i + 1, j)$ \\ \hline
+		$\lnot (\text{SMH}(board, [0..board.\text{SIZE}-1], i, j)) \wedge \text{SMH}(board, [0..board.\text{SIZE}-1], i - 1, j)$ & $newBoard.\text{isEmpty}(i, j)$ \\ \hline
+		$\lnot (\text{SMH}(board, [0..board.\text{SIZE}-1], i, j)) \wedge \lnot (\text{SMH}(board, [0..board.\text{SIZE}-1], i - 1, j))$ & $newBoard.\text{getTile}(i, j) = board.\text{getTile}(i, j)$ \\ 
+	\end{tabular} \\ \hline
+
+direction = \text{RIGHT} & 
+	\begin{tabular}{p{7.5cm}|p{8cm}}
+		$\text{SMH}(board, [board.\text{SIZE}-1..0], i, j)$ & $newBoard.\text{getTile}(board.\text{SIZE} - 1 - i, j) = board.\text{getTile}(board.\text{SIZE} - 1 - i, j) + board.\text{getTile}(board.\text{SIZE} - 1 - i - 1, j)$ \\ \hline
+		$\lnot (\text{SMH}(board, [board.\text{SIZE}-1..0], i, j)) \wedge \text{SMH}(board, [board.\text{SIZE}-1..0], i - 1, j)$ & $newBoard.\text{isEmpty}(board.\text{SIZE} - 1 - i, j)$ \\ \hline
+		$\lnot (\text{SMH}(board, [board.\text{SIZE}-1..0], i, j)) \wedge \lnot (\text{SMH}(board, [board.\text{SIZE}-1..0], i -1, j))$ & $newBoard.\text{getTile}(board.\text{SIZE} - 1 - i, j) = board.\text{getTile}(board.\text{SIZE} - 1 - i, j)$ \\ 
+	\end{tabular} \\ \hline
+	
+direction = \text{UP} & 
+	\begin{tabular}{p{7.5cm}|p{8cm}}
+		$\text{SMV}(board, [0..board.\text{SIZE}-1], i, j)$ & $newBoard.\text{getTile}(i, j) = board.\text{getTile}(i, j) + board.\text{getTile}(i, j + 1)$ \\ \hline
+		$\lnot (\text{SMV}(board, [0..board.\text{SIZE}-1], i, j)) \wedge \text{SMV}(board, [0..board.\text{SIZE}-1], i, j-1)$ & $newBoard.\text{isEmpty}(i, j)$ \\ \hline
+		$\lnot (\text{SMV}(board, [0..board.\text{SIZE}-1], i, j)) \wedge \lnot (\text{SMV}(board, [0..board.\text{SIZE}-1], i, j-1))$ & $newBoard.\text{getTile}(i, j) = board.\text{getTile}(i, j)$ \\ 
+	\end{tabular} \\ \hline
+	
+direction = \text{DOWN} & 
+	\begin{tabular}{p{7.5cm}|p{8cm}}
+		$\text{SMV}(board, [board.\text{SIZE}-1..0], i, j)$ & $newBoard.\text{getTile}(i, board.\text{SIZE} - 1 - j) = board.\text{getTile}(i, board.\text{SIZE} - 1 - j) + board.\text{getTile}(i, board.\text{SIZE} - 1 - j - 1)$ \\ \hline
+		$\lnot (\text{SMV}(board, [board.\text{SIZE}-1..0], i, j)) \wedge \text{SMV}(board, [board.\text{SIZE}-1..0], i, j - 1)$ & $newBoard.\text{isEmpty}(i, board.\text{SIZE} - 1 - j)$ \\ \hline
+		$\lnot (\text{SMV}(board, [board.\text{SIZE}-1..0], i, j)) \wedge \lnot (\text{SMV}(board, [board.\text{SIZE}-1..0], i, j-1))$ & $newBoard.\text{getTile}(i, board.\text{SIZE} - 1 - j) = board.\text{getTile}(i, board.\text{SIZE} - 1 - j)$ \\ 
+	\end{tabular} \\ \hline
+\end{tabular}
+
+\begin{itemize}
+\item exception: none
+\end{itemize}
+
+\noindent scoreFromMerge($board$, $direction$):
+\begin{itemize}
+\item output: out := 
+\end{itemize}
+\begin{tabular}{|p{2cm}|p{16.6cm}|}
+ & \textbf{Out} \\ \hline
+ $direction = \text{LEFT}$ & $(+ i, j : \mathbb{Z} | i \in [0..board.\text{SIZE} -1] \wedge j \in [0..board.\text{SIZE} -1] \wedge \text{SMH}(board, [0..board.\text{SIZE}-1], i, j): board.\text{getTile}(i, j) + board.\text{getTile}(i + 1, j))$ \\ \hline
+ $direction = \text{RIGHT}$ & $(+ i, j : \mathbb{Z} | i \in [0..board.\text{SIZE} -1] \wedge j \in [0..board.\text{SIZE} -1] \wedge \text{SMH}(board, [board.\text{SIZE}-1..0], i, j): board.\text{getTile}(board.\text{SIZE} - 1 - i, j) + board.\text{getTile}(board.\text{SIZE} - 1 - i - 1, j))$ \\ \hline
+ $direction = \text{UP}$ &  $(+ i, j : \mathbb{Z} | i \in [0..board.\text{SIZE} -1] \wedge j \in [0..board.\text{SIZE} -1] \wedge \text{SMV}(board, [0..board.\text{SIZE}-1], i, j) :  board.\text{getTile}(i, j) + board.\text{getTile}(i, j + 1))$\\ \hline
+ $direction = \text{DOWN}$ &  $(+ i, j : \mathbb{Z} | i \in [0..board.\text{SIZE} -1] \wedge j \in [0..board.\text{SIZE} -1] \wedge \text{SMV}(board, [board.\text{SIZE}-1..0], i, j) : board.\text{getTile}(i, board.\text{SIZE} - 1 - j) + board.\text{getTile}(i, board.\text{SIZE} - 1 - j - 1))$\\ \hline
+\end{tabular}
+
+\begin{itemize}
+\item exception: none \\
+\end{itemize} 
+
+\noindent align($board$, $direction$):
+\begin{itemize}
+\item output: out := $newBoard : \text{BoardT} \text{ such that } \forall i, j : \mathbb{Z} | i \in [0..board.\text{SIZE} -1] \wedge j \in [0..board.\text{SIZE} -1] : $ 
+\end{itemize}
+\begin{tabular}{|p{2cm}|p{15cm}|}
+ & \textbf{Out} \\ \hline
+ $direction = \text{LEFT}$ & $(\exists row_\text{NE} : \text{set of } \mathbb{Z} | row_\text{NE} = \text{nonEmptyRowIndices}(board, j) : (i < |row_\text{NE}| \Rightarrow newBoard.\text{getTile}(i, j) = board.\text{getTile}(row_\text{NE}[i], j)) | (i \geq |row_\text{NE}| \Rightarrow newBoard.\text{isTileEmpty}(i, j)))$  \\ \hline
+ 
+ $direction = \text{RIGHT}$ & $(\exists row_\text{NE} : \text{set of } \mathbb{Z} | row_\text{NE} = \text{nonEmptyRowIndices}(board, j) : (i < board.\text{SIZE} - |row_\text{NE}| \Rightarrow newBoard.\text{isTileEmpty}(i, j)) | (i \geq board.\text{SIZE} - |row_\text{NE}| \Rightarrow newBoard.\text{getTile}(i, j) = board.\text{getTile}(row_\text{NE}[i - (board.\text{SIZE} - |row_\text{NE}|)], j)))$ \\ \hline
+ 
+ $direction = \text{UP}$ &  $(\exists col_\text{NE} : \text{set of } \mathbb{Z} | col_\text{NE} = \text{nonEmptyColumnIndices}(board, i) : (j < |col_\text{NE}| \Rightarrow newBoard.\text{getTile}(i, j) = board.\text{getTile}(i,col_\text{NE}[j])) | (j \geq |col_\text{NE}| \Rightarrow newBoard.\text{isTileEmpty}(i, j)))$ \\ \hline
+ 
+ $direction = \text{DOWN}$ &  $(\exists col_\text{NE} : \text{set of } \mathbb{Z} | col_\text{NE} = \text{nonEmptyColumnIndices}(board, i) : (j < board.\text{SIZE} - |col_\text{NE}| \Rightarrow newBoard.\text{isTileEmpty}(i, j)) | (j \geq board.\text{SIZE} - |col_\text{NE}| \Rightarrow newBoard.\text{getTile}(i, j) = board.\text{getTile}(i,col_\text{NE}[j - (board.\text{SIZE} - |col_\text{NE}|)])))$ \\ \hline
+\end{tabular}
+
+\begin{itemize}
+\item exception: none
+\end{itemize}
+
+\noindent addRandomTile($board$):
+\begin{itemize}
+\item output: out := $newBoard : \text{BoardT} \text{ such that }  (\exists i, j : \mathbb{Z} | i \in [0..board.\text{SIZE} - 1] \wedge j  \in [0..board.\text{SIZE} - 1] : i = \text{randomIndex}(board) \wedge  j = \text{randomIndex}(board) \wedge board.\text{isTileEmpty}(i, j) \wedge (\forall x, y : \mathbb{Z} | \mathit{x} \in [0..board.\text{SIZE} - 1] \wedge \mathit{y} \in [0..board.\text{SIZE} - 1] :  (\mathit{x} \neq i) \wedge  (\mathit{y} \neq j) \wedge newBoard.\text{getTile}(x, y) = board.\text{getTile}(x, y) \wedge newBoard.\text{getTile}(i, j) = \text{randomTile}(board)))$
+\item exception: exc := $board.\text{isFull}() \Rightarrow \text{IllegalStateException}$
+\end{itemize}
+
+\subsection* {Local Functions}
+\noindent randomIndex: $\text{BoardT} \rightarrow \mathbb{Z}$ \\
+\noindent randomIndex($board$) $\equiv \lfloor  random() \times board.\text{SIZE} \rfloor$ \\
+
+\noindent randomTile: $\text{BoardT} \rightarrow \mathbb{Z}$ \\
+\noindent randomTile($board$) $\equiv (random() < 0.9 \Rightarrow 2) | (\text{True} \Rightarrow 4)$ \\
+
+\noindent nonEmptyRowIndices: $\text{BoardT} \times  \mathbb{Z} \rightarrow \text{set of } \mathbb{Z}$ \\
+\noindent nonEmptyRowIndices($board, j$) \\ $\equiv \cup(i:\mathbb{Z} | i \in [0..board.\text{SIZE}-1] \wedge \lnot board.\text{isTileEmpty}(i,j):\{i\})$ \\
+
+\noindent nonEmptyColumnIndices: $\text{BoardT} \times  \mathbb{Z} \rightarrow \text{set of } \mathbb{Z}$ \\
+\noindent nonEmptyColumnIndices($board, i$) \\ $\equiv \cup(j:\mathbb{Z} | j \in [0..board.\text{SIZE}-1] \wedge \lnot board.\text{isTileEmpty}(i,j):\{j\})$
+
+\newpage 
+
+\noindent SMH: $\text{BoardT} \times \text{seq of } \mathbb{Z} \times \mathbb{Z}  \times \mathbb{Z} \rightarrow \mathbb{B}$ \# shouldMergeHorizontal \\
+\noindent SMH($board, x_s, i, j$)  $\equiv $ \\
+
+\begin{tabular}{ |p{4.8cm}|@{}|c|@{}|cl}
+ & 
+	\begin{tabular}{p{1cm}|p{6.5cm}} 
+	 &  \begin{tabular} {p{5cm} | p{1cm}} 
+			 & \textbf{Out} \\ 
+			\end{tabular} 
+	\end{tabular} \\ \hline 
+$board.\text{getTile}(x_s[i], j)$ = $board.\text{getTile}(x_s[i+1], j) \wedge \lnot (i < 0 \vee i \geq board.\text{SIZE})$ &
+	\begin{tabular}{p{1cm}|p{6.5cm}} 
+	$i = 0$ &  \begin{tabular} {p{5cm} | p{1cm}}
+			True & True \\ 
+			\end{tabular} \\ \hline
+	$i > 0$ &  \begin{tabular} {p{5cm} | p{1cm}}
+			$board.\text{getTile}(x_s[i], j) \neq board.\text{getTile}(x_s[i-1], j) \vee \text{SMH}(board, x_s, i -2, j)$ & True \\ \hline 
+			$\lnot (board.\text{getTile}(x_s[i], j) \neq board.\text{getTile}(x_s[i-1], j) \vee \text{SMH}(board, x_s, i -2, j))$ & False \\
+			\end{tabular} 
+	\end{tabular} \\ \hline
+$board.\text{getTile}(x_s[i], j) \neq board.\text{getTile}(x_s[i +1], j) \vee i < 0 \vee i \geq board.\text{SIZE}$ & 
+	\begin{tabular}{p{1cm}|p{6.5cm}} 
+	True &  \begin{tabular} {p{5cm} | p{1cm}} \\ \\
+			True & False \\ \\ \\
+			\end{tabular} 
+	\end{tabular}  \\ \hline 
+\end{tabular} \\ \\ \\
+
+\noindent SMV: $\text{BoardT} \times \text{seq of } \mathbb{Z} \times \mathbb{Z}  \times \mathbb{Z} \rightarrow \mathbb{B}$ \# shouldMergeVertical \\
+\noindent SMV($board, y_s, i, j$)  $\equiv $ \\
+
+\begin{tabular}{ |p{4.8cm}|@{}|c|@{}|cl}
+ & 
+	\begin{tabular}{p{1cm}|p{6.5cm}} 
+	 &  \begin{tabular} {p{5cm} | p{1cm}} 
+			 & \textbf{Out} \\ 
+			\end{tabular} 
+	\end{tabular} \\ \hline 
+$board.\text{getTile}(i, y_s[j])$ = $board.\text{getTile}(i, y_s[j+1]) \wedge \lnot (j < 0 \vee j \geq board.\text{SIZE})$ &
+	\begin{tabular}{p{1cm}|p{6.5cm}} 
+	$j = 0$ &  \begin{tabular} {p{5cm} | p{1cm}}
+			True & True \\ 
+			\end{tabular} \\ \hline
+	$j > 0$ &  \begin{tabular} {p{5cm} | p{1cm}}
+			$board.\text{getTile}(i, y_s[j]) \neq board.\text{getTile}(i, y_s[j-1]) \vee \text{SMV}(board, y_s, i, j-2)$ & True \\ \hline 
+			$\lnot (board.\text{getTile}(i, y_s[j]) \neq board.\text{getTile}(i, y_s[j-1]) \vee \text{SMV}(board, y_s, i, j-2))$ & False \\
+			\end{tabular} 
+	\end{tabular} \\ \hline
+$board.\text{getTile}(i, y_s[j])$ $\neq$ $board.\text{getTile}(i, y_s[j+1]) \vee j < 0 \vee j \geq board.\text{SIZE}$ &
+	\begin{tabular}{p{1cm}|p{6.5cm}} 
+	True &  \begin{tabular} {p{5cm} | p{1cm}} \\ \\
+			True & False \\ \\ \\
+			\end{tabular} 
+	\end{tabular} \\ \hline 
+\end{tabular}
+
+\newpage
+
+\section* {Controller Module (Abstract Object)}
+
+\subsection*{Module}
+
+Controller
+
+\subsection* {Uses}
+
+BoardT, BoardManager, ScoreT, DirectionT
+
+\subsection* {Syntax}
+
+\subsubsection* {Exported Constants}
+
+None
+
+\subsubsection* {Exported Types}
+
+None
+
+\subsubsection* {Exported Access Programs}
+
+\begin{tabular}{| l | l | l | p{6cm} |}
+\hline
+\textbf{Routine name} & \textbf{In} & \textbf{Out} & \textbf{Exceptions}\\
+\hline
+newGame &  &  & \\
+\hline
+resumeGame & BoardT, $\mathbb{Z}, \mathbb{Z}$&  & IllegalStateException \\
+\hline
+move & DirectionT  &  & IllegalStateException \\
+\hline
+canMove & DirectionT  &  $\mathbb{B} $&  \\
+\hline
+isGameOver &  & $\mathbb{B}$ & \\
+\hline
+nextTileToGet &  & $\mathbb{Z}$ & \\
+\hline
+getBoard &  &  BoardT & \\
+\hline
+
+\end{tabular}
+
+\subsection* {Semantics}
+
+\subsubsection* {State Variables}
+
+$board: \text{BoardT}$ 
+
+\subsubsection* {State Invariant}
+
+None
+
+\subsubsection* {Assumptions}
+
+Assume newGame or resumeGame is called before using any of the other services.
+
+\newpage
+
+\subsubsection* {Access Routine Semantics}
+
+\noindent newGame():
+\begin{itemize}
+\item transition: $board := \text{BoardManager.addRandomTile(BoardManager.addRandomTile(new BoardT()))} \\ \text{and ScoreT module following ScoreT.resetScore()}$
+\item exception: none
+\end{itemize}
+
+\noindent resumeGame($resumeBoard, initialScore, initialHighScore$):
+\begin{itemize}
+\item transition: $board := resumeBoard  \\ \text{and ScoreT module following ScoreT.initialize}(initialScore, initialHighScore)$
+\item exception: exc := $\mathit{initialScore} < 0 \, \vee \, \mathit{initialHighScore} < 0 \, \vee \, \mathit{initialHighScore} < \mathit{initialScore} \Rightarrow \text{IllegalArgumentException}$
+\item assumptions: Assume that $resumeBoard$ will not be an empty BoardT object (i.e. it will not be a new BoardT())
+\end{itemize}
+
+\noindent move($direction$):
+\begin{itemize}
+\item transition: $board := (\text{self.canMove}(direction) \Rightarrow  \\ \text{BoardManager.addRandomTile}(\text{BoardManager.align}(\text{BoardManager.merge}(\text{BoardManager.align}(board, \\ direction), direction),direction))) \text{and ScoreT module following} \\ \text{ScoreT.updateScore}(\text{BoardManager.scoreFromMerge}(\text{BoardManager.align}(board, direction), direction)) $
+\item exception: exc := $\text{self.isGameOver}() \Rightarrow \text{IllegalStateException}$
+\end{itemize}
+
+\noindent canMove($direction$):
+\begin{itemize}
+\item output: out := $\lnot board.\text{equals(BoardManager.merge}(\text{BoardManager.align}(board, direction),direction))$
+\item exception: none
+\end{itemize}
+
+\noindent isGameOver():
+\begin{itemize}
+\item output: out := $\lnot \text{self.canMove(DirectionT.LEFT)} \wedge \lnot \text{self.canMove(DirectionT.RIGHT)} \wedge \lnot \text{self.canMove(DirectionT.UP)} \wedge \lnot \text{self.canMove(DirectionT.DOWN)}$
+\item exception: none
+\end{itemize}
+
+\noindent nextTileToGet(): \# the next tile to be achieved in the game; first it is 2048, then 4096, 8192,...
+\begin{itemize}
+\item output: out := $(\text{maxTile}(board) < 2048 \rightarrow 2048)|(\text{True} \rightarrow \text{maxTile}(board) \times 2)$
+\item exception: none
+\end{itemize}
+
+\noindent getBoard():
+\begin{itemize}
+\item output: out := $board$.copy()
+\item exception: none
+\end{itemize}
+
+\subsection* {Local Functions}
+\noindent maxTile: $\text{BoardT} \rightarrow \mathbb{Z}$ \\
+\noindent maxTile($board$) $\equiv \text{max}(\cup(i, j:\mathbb{Z} | i \in [0..board.\text{SIZE}-1] \wedge j \in [0..board.\text{SIZE}-1]:\{board.\text{getTile}(i, j)\}))$ \\
+
+\noindent max: $\text{set of } \mathbb{Z} \rightarrow \mathbb{Z}$ \\
+\noindent max($numbers$) $\equiv \text{the largest/maximum value in } numbers$ \\
+
+\newpage
+
+\section* {ComponentUI Module (Interface)}
+
+\subsection*{Interface Module}
+
+ComponentUI
+
+\subsection* {Uses}
+
+None
+
+\subsection* {Syntax}
+
+\subsubsection* {Exported Constants}
+
+None
+
+\subsubsection* {Exported Types}
+
+None
+
+\subsubsection* {Exported Access Programs}
+
+\begin{tabular}{| l | l | l | p{6cm} |}
+\hline
+\textbf{Routine name} & \textbf{In} & \textbf{Out} & \textbf{Exceptions}\\
+\hline
+update & & &  \\
+\hline
+\end{tabular}
+
+\subsection* {Semantics}
+
+\subsubsection* {State Variables}
+
+None
+
+\subsubsection* {State Invariant}
+
+None
+
+\subsubsection* {Assumptions}
+
+None
+
+\newpage
+
+\section* {ScoreUI Module (Abstract Data Type)}
+
+\subsection*{Template Module inherits ComponentUI}
+
+ScoreUI
+
+\subsection* {Uses}
+
+ComponentUI, ScoreT
+
+\subsection* {Syntax}
+
+\subsubsection* {Exported Constants}
+
+None
+
+\subsubsection* {Exported Types}
+
+ScoreUI = ?
+
+\subsubsection* {Exported Access Programs}
+
+\begin{tabular}{| l | l | l | p{6cm} |}
+\hline
+\textbf{Routine name} & \textbf{In} & \textbf{Out} & \textbf{Exceptions}\\
+\hline
+new ScoreUI & & &  \\
+\hline
+\end{tabular}
+
+\subsection* {Semantics}
+
+\subsubsection* {Environment Variables}
+
+$score$: A label to display text on an application window. \\
+$highScore$: A label to display text on an application window.
+
+\subsubsection* {State Variables}
+
+None
+
+\subsubsection* {State Invariant}
+
+None
+
+\subsubsection* {Assumptions}
+
+None
+
+\subsubsection* {Considerations}
+
+When implementing in Java, use a JPanel as a container for two JLabel instances representing $score$ and $highScore$ respectively.
+
+\newpage
+
+\subsubsection* {Access Routine Semantics}
+
+\noindent new ScoreUI():
+\begin{itemize}
+\item transition: Initialize the visual appearance of the $score$ and $highScore$ labels (i.e. font, color, size, etc) to resemble the original 2048 game as close as possible. Set the text for the $score$ label to read: ``SCORE" and the value of ScoreT.getScore(). Set the text for the $highScore$ label to read: ``BEST" and the value of  ScoreT.getHighScore().
+\item exception: none
+\end{itemize}
+
+\noindent update():
+\begin{itemize}
+\item transition: Set the text for the $score$ label to read: ``SCORE" and the value of ScoreT.getScore(). Set the text for the $highScore$ label to read: ``BEST" and the value of  ScoreT.getHighScore().
+\item exception: none
+\end{itemize}
+
+\newpage
+
+\section* {TileUI Module (Abstract Data Type)}
+
+\subsection*{Template Module inherits ComponentUI}
+
+TileUI
+
+\subsection* {Uses}
+
+ComponentUI
+
+\subsection* {Syntax}
+
+\subsubsection* {Exported Constants}
+
+None
+
+\subsubsection* {Exported Types}
+
+TileUI = ?
+
+\subsubsection* {Exported Access Programs}
+
+\begin{tabular}{| l | l | l | p{6cm} |}
+\hline
+\textbf{Routine name} & \textbf{In} & \textbf{Out} & \textbf{Exceptions}\\
+\hline
+new TileUI & $\mathbb{Z}$ & &  \\ \hline
+setValue & $\mathbb{Z}$ & & \\
+\hline
+\end{tabular}
+
+\subsection* {Semantics}
+
+\subsubsection* {Environment Variables}
+
+$tile$ : A square label to display text on an application window.
+
+\subsubsection* {State Variables}
+
+$value : \mathbb{Z}$
+
+\subsubsection* {State Invariant}
+
+None
+
+\subsubsection* {Assumptions}
+
+Assume that the $value$ is never greater than 4 digits (or monospace characters) in length.
+
+\subsubsection* {Considerations}
+
+When implementing in Java, use a JLabel to represent $tile$.
+
+\newpage
+
+\subsubsection* {Access Routine Semantics}
+
+\noindent new TileUI($initialValue$):
+\begin{itemize}
+\item transition: $value := initialValue$\\
+Initialize the visual appearance of the $tile$ label (i.e. font, border, size, etc) to resemble the original 2048 game as close as possible. Set the text for the $tile$ label to equal $value$ (If $value = 0$, set the text for the $tile$ label to an empty string). The color of the text for $tile$ should be equal to the hexadecimal code of foreground($value$). The background color for $tile$ should be equal to the hexadecimal code of background($value$).
+\item exception: none
+\end{itemize}
+
+\noindent setValue($newValue$):
+\begin{itemize}
+\item transition: $value := newValue$
+\end{itemize}
+
+\noindent update():
+\begin{itemize}
+\item transition: Set the text for the $tile$ label to equal $value$ (If $value = 0$, set the text for the $tile$ label to an empty string). The color of the text for $tile$ should be equal to the hexadecimal code of foreground($value$). The background color for $tile$ should be equal to the hexadecimal code of background($value$).
+\item exception: none
+\end{itemize}
+
+\subsection* {Local Functions}
+\noindent foreground: $\mathbb{Z} \rightarrow \text{Hexidecimal code}$ \\
+\noindent foreground($value$) $\equiv $ \\
+\begin{tabular}{|c|c|}
+ $value$ & \textbf{Out} \\ \hline
+ 0 & 0xe6e3e0 \\ \hline
+ 2 & 0x776e65 \\ \hline 
+ 4 & 0x776e65 \\ \hline
+ $> 4$ & 0xf9f6f2 \\ \hline
+\end{tabular} \\ \\
+
+\noindent background: $\mathbb{Z} \rightarrow \text{Hexidecimal code}$ \\
+\noindent background($value$) $\equiv $ \\
+\begin{tabular}{|c|c|}
+ $value$ & \textbf{Out} \\ \hline
+ 0 & 0xe6e3e0 \\ \hline
+ 2 & 0xeee4da \\ \hline 
+ 4 & 0xeee1c9 \\ \hline
+ 8 & 0xf3b27a \\ \hline
+ 16 & 0xf69664 \\ \hline
+ 32 & 0xf77c5f \\ \hline
+ 64 & 0xf75f3b \\ \hline
+ 128 & 0xedd073 \\ \hline
+ 256 & 0xedcc62 \\ \hline
+ 512 & 0xedc950 \\ \hline
+ 1024 & 0xedc53f \\ \hline
+ 2048 & 0xedc22e \\ \hline
+ 4096 & 0x5eda92 \\ \hline
+\end{tabular}
+
+\newpage
+
+\section* {BoardUI Module (Abstract Data Type)}
+
+\subsection*{Template Module inherits ComponentUI}
+
+BoardUI
+
+\subsection* {Uses}
+
+ComponentUI, TileUI, Controller, BoardT
+
+\subsection* {Syntax}
+
+\subsubsection* {Exported Constants}
+
+None
+
+\subsubsection* {Exported Types}
+
+BoardUI = ?
+
+\subsubsection* {Exported Access Programs}
+
+\begin{tabular}{| l | l | l | p{6cm} |}
+\hline
+\textbf{Routine name} & \textbf{In} & \textbf{Out} & \textbf{Exceptions}\\
+\hline
+new BoardUI & & &  \\
+\hline
+\end{tabular}
+
+\subsection* {Semantics}
+
+\subsubsection* {Environment Variables}
+
+$tiles$ : A square grid of TileUI components to be displayed on an application window.
+
+\subsubsection* {State Variables}
+
+$board$ : BoardT
+
+\subsubsection* {State Invariant}
+
+None
+
+\subsubsection* {Assumptions}
+
+None
+
+\subsubsection* {Considerations}
+
+When implementing in Java, use a JPanel with a GridLayout as a container for the TileUI instances in $tiles$.
+
+\newpage
+
+\subsubsection* {Access Routine Semantics}
+
+\noindent new BoardUI():
+\begin{itemize}
+\item transition: $board$ := Controller.getBoard() \\
+$(\forall i, j:\mathbb{Z} | i \in [0..board.\text{SIZE}-1] \wedge j \in [0..board.\text{SIZE}-1]:$ add new TileUI($board.getTile(i, j)$) to $tiles$) and initialize the visual appearance of the $tiles$ grid (i.e. colors, borders, etc) to resemble the original 2048 game as close as possible. Add the TileUI instances in a way such that $board$.getTile(0, 0) corresponds with the top-left of the grid and $board$.getTile($board$.SIZE - 1, $board$.SIZE - 1) corresponds with the bottom-right of the grid.
+\item exception: none
+\end{itemize}
+
+\noindent update():
+\begin{itemize}
+\item transition: $board$ := Controller.getBoard()\\
+ Then, $(\forall i, j:\mathbb{Z} | i \in [0..board.\text{SIZE}-1] \wedge j \in [0..board.\text{SIZE}-1]:$ set the value for the corresponding $tile$:TileUI in $tiles$ using $tile$.setValue($board$.getTile(i, j))). \\
+ Next, $(\forall \, tile : \text{TileUI} | \, tile \in tiles : \, tile.\text{update}())$
+\item exception: none
+\end{itemize}
+
+\newpage
+
+\section* {MessageUI Module (Abstract Data Type)}
+
+\subsection*{Template Module inherits ComponentUI}
+
+MessageUI
+
+\subsection* {Uses}
+
+ComponentUI, Controller
+
+\subsection* {Syntax}
+
+\subsubsection* {Exported Constants}
+
+None
+
+\subsubsection* {Exported Types}
+
+MessageUI = ?
+
+\subsubsection* {Exported Access Programs}
+
+\begin{tabular}{| l | l | l | p{6cm} |}
+\hline
+\textbf{Routine name} & \textbf{In} & \textbf{Out} & \textbf{Exceptions}\\
+\hline
+new MessageUI & & &  \\
+\hline
+\end{tabular}
+
+\subsection* {Semantics}
+
+\subsubsection* {Environment Variables}
+
+$message$: A label to display text on an application window.
+
+\subsubsection* {State Variables}
+
+None
+
+\subsubsection* {State Invariant}
+
+None
+
+\subsubsection* {Assumptions}
+
+None
+
+\subsubsection* {Considerations}
+
+When implementing in Java, use a JLabel to represent $message$.
+
+\newpage
+
+\subsubsection* {Access Routine Semantics}
+
+\noindent new MessageUI():
+\begin{itemize}
+\item transition: Initialize the visual appearance of the $message$ (i.e. font, color, size, etc) to resemble the original 2048 game as close as possible. Set the text for the $message$ label to read: ``Game Over!" if Controller.isGameOver() is true. Set the text for the $message$ label to read: ``Join the tiles, get to 2048!" if Controller.isGameOver() is false and Controller.nextTileToGet() $< 2048$. Set the text for the $message$ label to read: ``You won! Try to get to " and the value of Controller.nextTileToGet() if Controller.isGameOver() is false and Controller.nextTileToGet() $> 2048$.
+\item exception: none
+\end{itemize}
+
+\noindent update():
+\begin{itemize}
+\item transition: Set the text for the $message$ label to read: ``Game Over!" if Controller.isGameOver() is true. Set the text for the $message$ label to read: ``Join the tiles, get to 2048!" if Controller.isGameOver() is false and Controller.nextTileToGet() $< 2048$. Set the text for the $message$ label to read: ``You won! Try to get to " and the value of Controller.nextTileToGet() if Controller.isGameOver() is false and Controller.nextTileToGet() $> 2048$.
+\item exception: none
+\end{itemize}
+
+\newpage
+
+\section* {View Module (Abstract Object)}
+
+\subsection*{Module}
+
+View
+
+\subsection* {Uses}
+
+Controller, ScoreUI, BoardUI, MessageUI
+
+\subsection* {Syntax}
+
+\subsubsection* {Exported Constants}
+
+None
+
+\subsubsection* {Exported Types}
+
+None
+
+\subsubsection* {Exported Access Programs}
+
+\begin{tabular}{| l | l | l | p{6cm} |}
+\hline
+\textbf{Routine name} & \textbf{In} & \textbf{Out} & \textbf{Exceptions}\\
+\hline
+display & & &  \\
+\hline
+\end{tabular}
+
+\subsection* {Semantics}
+
+\subsubsection* {Environment Variables}
+
+$window$ : An application window to display the game on a portion of the computer screen. \\
+$title$ : A label to display text on an application window. \\
+$newGameButton$ : A button with text that can be displayed on an application window and clicked with the mouse. 
+
+\subsubsection* {State Variables}
+
+$score$ : ScoreUI \\
+$board$ : BoardUI \\
+$message$ : MessageUI
+
+\subsubsection* {State Invariant}
+
+None
+
+\subsubsection* {Assumptions}
+
+None
+
+\subsubsection* {Considerations}
+
+When implementing in Java, use a JFrame to represent $window$, use a JLabel to represent $title$, use a JButton to represent $newGameButton$. 
+\newpage
+
+\subsubsection* {Access Routine Semantics}
+
+\noindent display():
+\begin{itemize}
+\item transition: $score, board, message$ := new ScoreUI(), new BoardUI(), new MessageUI() 
+
+Initialize the $window$ with a width of 400 pixels and a height of 500 pixels. Next, initialize the $title$ label with the text ``2048" and format it (color, font, size etc.) to closely resemble the title label on the original 2048 game. Then, initialize the $newGameButton$ with the text ``New Game" and format it (color, size, shape) to closely resemble the New Game button on the original 2048 game.
+
+Add the $title$ label to the top left area of $window$. Add $score$ to the top right area of $window$. Add $message$ to the window below the title and add $newGameButton$ to the window below $score$ such that there is ample space between them and enough space for the $board$ to be added as large as possible. Lastly, add the $board$ to the bottom of the $window$ so that it is cantered and large as possible.
+
+When the window is displayed, it should listen for the user's key presses so that if Controller.isGameOver() is false, it should invoke Controller.move() according to which key is pressed. If the left arrow key is pressed, invoke Controller.move(Direction.LEFT), if the right arrow key is pressed, invoke Controller.move(Direction.RIGHT), if the up arrow key is pressed, invoke Controller.move(Direction.UP), and if the down arrow key is pressed, invoke Controller.move(Direction.DOWN). Consequently, $score$.update(), $board$.update(), $message$.update() are invoked. 
+
+When the window is displayed, it should listen for the user's mouse clicks so that if the user clicks $newGameButton$, then Controller.newGame() is invoked. Consequently, $score$.update(), $board$.update(), $message$.update() are invoked. 
+
+When the window is exited, the method should terminate.
+
+\item exception: none
+\end{itemize}
+
+\end {document}
